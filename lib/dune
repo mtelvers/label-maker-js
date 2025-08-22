@@ -1,0 +1,5 @@
+(library
+ (public_name label-maker.lib)
+ (name label_maker_lib)
+ (libraries camlpdf otfm)
+ (modules font_utils pdf_generator label_layouts))

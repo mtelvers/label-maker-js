@@ -1,0 +1,16 @@
+(executable
+ (public_name label-maker)
+ (name label_maker)
+ (modes js native)
+ (libraries js_of_ocaml label-maker.lib vg)
+ (preprocess
+  (pps js_of_ocaml-ppx))
+ (js_of_ocaml
+  (build_runtime_flags
+   (--file %{dep:../XCCW_Joined_23a.ttf}))))
+
+(executable
+ (public_name test-labels)
+ (name test_labels)
+ (libraries label-maker.lib))
+

@@ -1,0 +1,6 @@
+(rule
+ (mode promote)
+ (target label_maker.bc.js)
+ (deps ../bin/label_maker.bc.js)
+ (action
+  (copy ../bin/label_maker.bc.js label_maker.bc.js)))
