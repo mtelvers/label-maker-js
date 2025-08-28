@@ -41,7 +41,10 @@ let wrap_text ?(max_width_with_checkbox = 0.0) ?(checkbox_height = 0.0) ?(line_h
               else ([ word ] :: lines, line_y +. line_height))
             ([ [] ], current_y) words
         in
-        (all_lines @ List.rev_map (String.concat " ") lines, final_y +. line_height))
+        let processed_lines = List.rev_map (String.concat " ") lines in
+        (* Add empty string before this user_line (except for the first one) to create gap after manual newlines *)
+        let lines_with_gap = if all_lines = [] then processed_lines else "" :: processed_lines in
+        (all_lines @ lines_with_gap, final_y +. (line_height *. 1.5)))
       ([], 0.0) user_lines
   in
 
@@ -150,8 +153,8 @@ let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders 
     let label_height_points = mm_to_points layout.label_height_mm in
     let text_margin = 3.0 in
     (* 3 points margin inside label *)
-    let checkbox_height = mm_to_points 8.0 in
-    (* 8mm checkbox *)
+    let checkbox_height = font_size in
+    (* checkbox matches font size *)
     let checkbox_margin = 5.0 in
     (* 5 points margin from edge for better clearance *)
     let line_height = font_size *. 1.2 in
@@ -180,12 +183,19 @@ let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders 
           in
 
           let text_parts =
-            List.mapi
-              (fun line_idx line ->
-                let text_x = x +. text_margin in
-                let text_y = y +. label_height_points -. text_margin -. (float_of_int line_idx *. line_height) -. font_size in
-                Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td (%s) Tj ET" font_size text_x text_y line)
-              text_lines
+            let _, parts = List.fold_left
+              (fun (current_y, parts) line ->
+                if line = "" then
+                  (* Empty line represents gap after manual newline - use smaller spacing *)
+                  (current_y +. (line_height /. 2.0), parts)
+                else
+                  let text_x = x +. text_margin in
+                  let text_y = y +. label_height_points -. text_margin -. current_y -. font_size in
+                  let text_part = Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td (%s) Tj ET" font_size text_x text_y line in
+                  (current_y +. line_height, text_part :: parts))
+              (0.0, []) text_lines
+            in
+            List.rev parts
           in
 
           let all_parts = border_parts @ checkbox_parts @ text_parts in

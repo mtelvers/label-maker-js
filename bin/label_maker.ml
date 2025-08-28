@@ -182,7 +182,7 @@ let () =
   Dom.appendChild form_div text_label;
 
   let text_input = create_textarea () in
-  text_input##.value := Js.string "Line 1: Sample text\nLine 2: More text\nLine 3: Final line";
+  text_input##.value := Js.string "Date\nLO";
   text_input##.style##.width := Js.string "100%";
   text_input##.style##.height := Js.string "80px";
   text_input##.style##.marginBottom := Js.string "20px";
