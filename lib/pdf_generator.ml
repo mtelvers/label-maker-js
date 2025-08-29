@@ -1,6 +1,9 @@
 open Font_utils
 open Label_layouts
 
+(* Text justification types *)
+type text_justification = Left | Center | Right | Justify
+
 let save_pdf_to_file pdf filename = try Pdfwrite.pdf_to_file pdf filename with e -> failwith ("Failed to save PDF: " ^ Printexc.to_string e)
 
 (* Text wrapping functionality *)
@@ -17,6 +20,23 @@ let estimate_text_width font_size widths text =
       0.0 text
   in
   char_width_sum *. font_size /. 1000.0
+
+(* Text alignment calculation functions *)
+let calculate_aligned_x base_x justification line_width available_width =
+  match justification with
+  | Left -> base_x
+  | Center -> base_x +. ((available_width -. line_width) /. 2.0)
+  | Right -> base_x +. available_width -. line_width
+  | Justify -> base_x (* Justify uses base position + Tw spacing *)
+
+let calculate_word_spacing line available_width font_size widths =
+  match String.split_on_char ' ' line with
+  | [] | [ _ ] -> 0.0 (* Empty line or single word - no spacing needed *)
+  | words ->
+      let line_width = estimate_text_width font_size widths line in
+      let extra_space = available_width -. line_width in
+      let spaces_between_words = List.length words - 1 in
+      extra_space /. float_of_int spaces_between_words
 
 let wrap_text ?(max_width_with_checkbox = 0.0) ?(checkbox_height = 0.0) ?(line_height = 0.0) text max_width font_size widths =
   (* First split on explicit line breaks *)
@@ -50,7 +70,7 @@ let wrap_text ?(max_width_with_checkbox = 0.0) ?(checkbox_height = 0.0) ?(line_h
 
   all_lines
 
-let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders = false) ?(include_checkbox = true) () =
+let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders = false) ?(include_checkbox = true) ?(justification = Left) () =
   try
     (* Get the selected layout *)
     let layout =
@@ -183,17 +203,31 @@ let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders 
           in
 
           let text_parts =
-            let _, parts = List.fold_left
-              (fun (current_y, parts) line ->
-                if line = "" then
-                  (* Empty line represents gap after manual newline - use smaller spacing *)
-                  (current_y +. (line_height /. 2.0), parts)
-                else
-                  let text_x = x +. text_margin in
-                  let text_y = y +. label_height_points -. text_margin -. current_y -. font_size in
-                  let text_part = Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td (%s) Tj ET" font_size text_x text_y line in
-                  (current_y +. line_height, text_part :: parts))
-              (0.0, []) text_lines
+            let _, parts =
+              List.fold_left
+                (fun (current_y, parts) line ->
+                  if line = "" then
+                    (* Empty line represents gap after manual newline - use smaller spacing *)
+                    (current_y +. (line_height /. 2.0), parts)
+                  else
+                    let base_text_x = x +. text_margin in
+                    let text_y = y +. label_height_points -. text_margin -. current_y -. font_size in
+
+                    (* Calculate available width for this line (accounting for checkbox if needed) *)
+                    let available_width = if include_checkbox && current_y <= checkbox_height then max_width_with_checkbox else max_width in
+
+                    let text_part =
+                      match justification with
+                      | Justify ->
+                          let word_spacing = calculate_word_spacing line available_width font_size widths in
+                          Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td %.2f Tw (%s) Tj ET" font_size base_text_x text_y word_spacing line
+                      | _ ->
+                          let line_width = estimate_text_width font_size widths line in
+                          let aligned_text_x = calculate_aligned_x base_text_x justification line_width available_width in
+                          Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td (%s) Tj ET" font_size aligned_text_x text_y line
+                    in
+                    (current_y +. line_height, text_part :: parts))
+                (0.0, []) text_lines
             in
             List.rev parts
           in

@@ -13,4 +13,3 @@
  (public_name test-labels)
  (name test_labels)
  (libraries label-maker.lib))
-

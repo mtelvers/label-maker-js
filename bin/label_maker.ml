@@ -4,6 +4,13 @@ open Label_maker_lib.Pdf_generator
 
 let log_message _msg = ()
 
+let justification_of_string = function
+  | "Left" -> Label_maker_lib.Pdf_generator.Left
+  | "Center" -> Label_maker_lib.Pdf_generator.Center
+  | "Right" -> Label_maker_lib.Pdf_generator.Right
+  | "Justify" -> Label_maker_lib.Pdf_generator.Justify
+  | _ -> Label_maker_lib.Pdf_generator.Left (* default fallback *)
+
 let check_font_data_integrity_js font_bytes expected_size =
   let actual_size = Bytes.length font_bytes in
   let first_4_bytes =
@@ -250,6 +257,34 @@ let () =
 
   Dom.appendChild form_div font_size_container;
 
+  (* Text Justification selection *)
+  let justification_label = Dom_html.createLabel Dom_html.document in
+  justification_label##.innerHTML := Js.string "Text Alignment:";
+  justification_label##.style##.display := Js.string "block";
+  justification_label##.style##.marginBottom := Js.string "8px";
+  justification_label##.style##.fontWeight := Js.string "bold";
+  justification_label##.style##.color := Js.string "#555";
+  Dom.appendChild form_div justification_label;
+
+  let justification_select = Dom_html.createSelect Dom_html.document in
+  justification_select##.style##.width := Js.string "100%";
+  justification_select##.style##.padding := Js.string "10px";
+  justification_select##.style##.marginBottom := Js.string "20px";
+  justification_select##.style##.border := Js.string "1px solid #ddd";
+  justification_select##.style##.borderRadius := Js.string "4px";
+  justification_select##.style##.fontSize := Js.string "14px";
+
+  let option_left = create_select_option "Left" "Left aligned" in
+  let option_center = create_select_option "Center" "Center aligned" in
+  let option_right = create_select_option "Right" "Right aligned" in
+  let option_justify = create_select_option "Justify" "Fully justified" in
+
+  Dom.appendChild justification_select option_left;
+  Dom.appendChild justification_select option_center;
+  Dom.appendChild justification_select option_right;
+  Dom.appendChild justification_select option_justify;
+  Dom.appendChild form_div justification_select;
+
   (* Options section *)
   let options_container = Dom_html.createDiv Dom_html.document in
   options_container##.style##.marginBottom := Js.string "20px";
@@ -326,17 +361,19 @@ let () =
            let font_size = float_of_string (Js.to_string font_size_input##.value) in
            let show_borders = Js.to_bool border_checkbox##.checked in
            let include_checkbox = Js.to_bool checkbox_feature_checkbox##.checked in
+           let justification = justification_of_string (Js.to_string justification_select##.value) in
 
            log_message
              ("Generating labels with text: '" ^ text ^ "', layout: " ^ layout_name ^ ", font size: " ^ string_of_float font_size ^ ", borders: "
-            ^ string_of_bool show_borders ^ ", checkbox: " ^ string_of_bool include_checkbox);
+            ^ string_of_bool show_borders ^ ", checkbox: " ^ string_of_bool include_checkbox ^ ", justification: "
+             ^ Js.to_string justification_select##.value);
 
            match load_font_from_fs "XCCW_Joined_23a.ttf" with
            | Some font_bytes -> (
                log_message ("Font loaded successfully! Size: " ^ string_of_int (Bytes.length font_bytes) ^ " bytes");
                try
                  log_message "Creating multi-label PDF...";
-                 let pdf = create_pdf_with_labels font_bytes text layout_name font_size ~show_borders ~include_checkbox () in
+                 let pdf = create_pdf_with_labels font_bytes text layout_name font_size ~show_borders ~include_checkbox ~justification () in
                  let pdf_content = create_pdf_as_string pdf in
                  if String.length pdf_content > 6 && String.sub pdf_content 0 6 = "Error:" then log_message pdf_content
                  else
