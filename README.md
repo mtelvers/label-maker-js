@@ -77,23 +77,31 @@ Either layout can be emitted on a reduced page — see **Shrink page to fit prin
 Printer drivers set to "fit to printable area" shrink an A4 page so it clears the
 unprintable margin, which moves every label. Ticking **Shrink page to fit printer** crops
 the blank margin off the page itself, so the driver has nothing oversized to scale. The
-labels keep their exact A4 positions; only the page box around them changes:
+labels keep their exact A4 positions; only the page box around them changes.
 
-| Layout | Normal page | Shrunk page |
-| --- | --- | --- |
-| Avery L7160 | 210×297mm (A4) | 196.0×267.0mm (93.3% of A4 width) |
-| Avery L7162 | 210×297mm (A4) | 198.4×275.4mm (94.5% of A4 width) |
+The page is cropped to what is actually **drawn**, not to the label grid. That matters:
+the grid runs closer to the paper edge than the ink does, so on a printer whose
+unprintable margin exceeds the grid margin, a grid-cropped page would still be shrunk.
+Turning borders off therefore gives a smaller page than leaving them on.
+
+Typical page sizes at 12pt with a checkbox:
+
+| Layout | Normal page | Shrunk, borders off | Shrunk, borders on |
+| --- | --- | --- | --- |
+| Avery L7160 | 210×297mm (A4) | 193.9×267.0mm | 196.4×267.4mm |
+| Avery L7162 | 210×297mm (A4) | 195.9×267.0mm | 198.8×275.8mm |
 
 The crop is deliberately *concentric* with A4 — the same inset is taken off both sides of
-each axis, rather than hugging the labels — so the page centre stays on the A4 centre and
-a driver that centres the smaller sheet puts every label back exactly where it belongs.
-Cropping tight to the labels would instead offset the sheet by half the difference
-between opposite margins.
+each axis, rather than hugging the ink — so the page centre stays on the A4 centre and a
+driver that centres the smaller sheet puts every label back exactly where it belongs.
+Cropping tight to the ink would instead offset the sheet by half the difference between
+opposite margins. The crop is also capped at 15mm per edge, so centred or right-aligned
+short text cannot produce a page a fraction of A4 that a driver might scale *up*.
 
 Leave it off unless labels print out of position. It removes the driver's *reason* to
 scale but cannot prevent it: a printer whose unprintable margin exceeds the crop will
-still shrink the page, and with less slack than before. With borders enabled the leftmost
-column and top row graze the page edge, so half of that 1pt stroke is clipped.
+still shrink the page. With borders enabled the leftmost column and top row sit close to
+the page edge, so part of that 1pt stroke may be clipped.
 
 This option replaces the old "Avery L7160-93" layout entry, which did the same job for one
 layout only.

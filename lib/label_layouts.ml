@@ -4,6 +4,7 @@ let a4_height_mm = 297.0
 
 (* Convert mm to PDF points (1 mm = 2.834645669 points) *)
 let mm_to_points mm = mm *. 2.834645669
+let points_to_mm pt = pt /. 2.834645669
 
 type label_layout = {
   name : string;
@@ -54,30 +55,43 @@ let avery_l7162 =
 
 let available_layouts = [ avery_l7160; avery_l7162 ]
 
-(* Page box as (x0, y0, x1, y1) in mm, PDF origin bottom-left.
+(* Smallest page box, in mm as (x0, y0, x1, y1) with PDF origin bottom-left,
+   that contains the given ink bounding box AND stays concentric with A4: the
+   same inset is taken off both sides of each axis, using whichever side has
+   less clearance.
 
-   For a cropped layout this is the smallest box that still contains every
-   label AND remains concentric with A4: the same inset is taken off both
-   sides of each axis, using whichever side has less clearance. Staying
-   concentric matters because a driver handed a smaller-than-A4 page centres
-   it on the sheet, so keeping the page centre on the A4 centre puts every
-   label back at its true position. Cropping tight to the labels instead
+   Staying concentric matters because a driver handed a smaller-than-A4 page
+   centres it on the sheet, so keeping the page centre on the A4 centre puts
+   every label back at its true position. Cropping tight to the ink instead
    would offset the sheet by half the difference between opposite margins.
 
-   Label coordinates are unaffected: they stay in full-A4 space and the box
-   simply crops away the blank margin around them. *)
-let page_box_mm ?(crop = false) layout =
-  if not crop then (0.0, 0.0, a4_width_mm, a4_height_mm)
-  else
-    let block_width = (float_of_int layout.cols *. layout.label_width_mm) +. (float_of_int (layout.cols - 1) *. layout.spacing_x_mm) in
-    let block_height = (float_of_int layout.rows *. layout.label_height_mm) +. (float_of_int (layout.rows - 1) *. layout.spacing_y_mm) in
-    let left = layout.margin_left_mm in
-    let right = a4_width_mm -. (layout.margin_left_mm +. block_width) in
-    let top = layout.margin_top_mm in
-    let bottom = a4_height_mm -. (layout.margin_top_mm +. block_height) in
-    let x_inset = Float.max 0.0 (Float.min left right) in
-    let y_inset = Float.max 0.0 (Float.min top bottom) in
-    (x_inset, y_inset, a4_width_mm -. x_inset, a4_height_mm -. y_inset)
+   The box is measured against what is actually drawn, not against the label
+   grid, because the grid runs closer to the paper edge than the ink does: on
+   a printer whose unprintable margin exceeds the grid margin, cropping to the
+   grid still leaves an oversized page for the driver to shrink. Drawn
+   coordinates are unaffected either way -- they stay in full-A4 space and the
+   box simply crops away the blank margin around them. *)
+let max_crop_inset_mm = 15.0
+
+let concentric_page_box_mm (ink_x0, ink_y0, ink_x1, ink_y1) =
+  (* Never crop further than [max_crop_inset_mm]. Centred or right-aligned
+     short text leaves the ink far from the paper edge, and cropping to it
+     would hand the driver a page a fraction of A4: harmless if the driver
+     only shrinks oversized pages, but a driver that scales every page to fit
+     would blow such a page up. No printer needs a deeper crop than this. *)
+  let inset side_a side_b = Float.min max_crop_inset_mm (Float.max 0.0 (Float.min side_a side_b)) in
+  let x_inset = inset ink_x0 (a4_width_mm -. ink_x1) in
+  let y_inset = inset ink_y0 (a4_height_mm -. ink_y1) in
+  (x_inset, y_inset, a4_width_mm -. x_inset, a4_height_mm -. y_inset)
+
+let full_page_box_mm = (0.0, 0.0, a4_width_mm, a4_height_mm)
+
+(* Bounding box of the label grid itself, in mm. Only the label edges, so it is
+   wider than the ink; used for reporting rather than for the page box. *)
+let label_block_box_mm layout =
+  let block_width = (float_of_int layout.cols *. layout.label_width_mm) +. (float_of_int (layout.cols - 1) *. layout.spacing_x_mm) in
+  let block_height = (float_of_int layout.rows *. layout.label_height_mm) +. (float_of_int (layout.rows - 1) *. layout.spacing_y_mm) in
+  (layout.margin_left_mm, a4_height_mm -. (layout.margin_top_mm +. block_height), layout.margin_left_mm +. block_width, a4_height_mm -. layout.margin_top_mm)
 
 (* Calculate label position for given row and column *)
 let calculate_label_position layout row col =
@@ -125,7 +139,8 @@ let print_layout_info layout =
   printf "Grid: %d cols x %d rows = %d labels\n" layout.cols layout.rows (layout.cols * layout.rows);
   printf "Margins: left=%.1f mm, top=%.1f mm\n" layout.margin_left_mm layout.margin_top_mm;
   printf "Spacing: x=%.1f mm, y=%.1f mm\n" layout.spacing_x_mm layout.spacing_y_mm;
-  let x0, y0, x1, y1 = page_box_mm ~crop:true layout in
-  printf "Page box: A4, or cropped [%.1f %.1f %.1f %.1f] mm = %.1f x %.1f mm (%.1f%% x %.1f%% of A4)\n" x0 y0 x1 y1 (x1 -. x0) (y1 -. y0)
+  let x0, y0, x1, y1 = concentric_page_box_mm (label_block_box_mm layout) in
+  printf "Page box if cropped to the labels: [%.1f %.1f %.1f %.1f] mm = %.1f x %.1f mm (%.1f%% x %.1f%% of A4)\n" x0 y0 x1 y1 (x1 -. x0) (y1 -. y0)
     (100.0 *. (x1 -. x0) /. a4_width_mm)
-    (100.0 *. (y1 -. y0) /. a4_height_mm)
+    (100.0 *. (y1 -. y0) /. a4_height_mm);
+  printf "   (the real page box is cropped to the ink, which is narrower still)\n"

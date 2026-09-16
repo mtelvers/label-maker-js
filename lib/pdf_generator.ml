@@ -205,16 +205,39 @@ let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders 
     (* Wrap text into lines with checkbox awareness *)
     let text_lines = wrap_text ~max_width_with_checkbox ~checkbox_height ~line_height text max_width font_size widths in
 
+    (* Bounding box of everything actually drawn, in points. The page box is
+       cropped to this rather than to the label grid: the grid runs nearer the
+       paper edge than the ink does, and a printer whose unprintable margin
+       exceeds the grid margin would still shrink a grid-cropped page. *)
+    let ink_x0 = ref infinity and ink_y0 = ref infinity in
+    let ink_x1 = ref neg_infinity and ink_y1 = ref neg_infinity in
+    let note_ink x0 y0 x1 y1 =
+      if x0 < !ink_x0 then ink_x0 := x0;
+      if y0 < !ink_y0 then ink_y0 := y0;
+      if x1 > !ink_x1 then ink_x1 := x1;
+      if y1 > !ink_y1 then ink_y1 := y1
+    in
+    (* "re S" strokes with the default 1pt width, centred on the path *)
+    let half_stroke = 0.5 in
+
     let content_parts =
       List.map
         (fun (x, y) ->
-          let border_parts = if show_borders then [ Printf.sprintf "%.2f %.2f %.2f %.2f re S" x y label_width_points label_height_points ] else [] in
+          let border_parts =
+            if show_borders then (
+              note_ink (x -. half_stroke) (y -. half_stroke) (x +. label_width_points +. half_stroke) (y +. label_height_points +. half_stroke);
+              [ Printf.sprintf "%.2f %.2f %.2f %.2f re S" x y label_width_points label_height_points ])
+            else []
+          in
 
           let checkbox_parts =
-            if include_checkbox then
+            if include_checkbox then (
               let checkbox_x = x +. label_width_points -. checkbox_height -. checkbox_margin in
               let checkbox_y = y +. label_height_points -. checkbox_height -. checkbox_margin in
-              [ Printf.sprintf "%.2f %.2f %.2f %.2f re S" checkbox_x checkbox_y checkbox_height checkbox_height ]
+              note_ink (checkbox_x -. half_stroke) (checkbox_y -. half_stroke)
+                (checkbox_x +. checkbox_height +. half_stroke)
+                (checkbox_y +. checkbox_height +. half_stroke);
+              [ Printf.sprintf "%.2f %.2f %.2f %.2f re S" checkbox_x checkbox_y checkbox_height checkbox_height ])
             else []
           in
 
@@ -236,10 +259,19 @@ let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders 
                       match justification with
                       | Justify ->
                           let word_spacing = calculate_word_spacing line available_width font_size widths in
+                          (* justified lines are stretched to fill available_width *)
+                          note_ink base_text_x
+                            (text_y +. (descent *. font_size /. 1000.0))
+                            (base_text_x +. available_width)
+                            (text_y +. (ascent *. font_size /. 1000.0));
                           Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td %.2f Tw (%s) Tj ET" font_size base_text_x text_y word_spacing (escape_pdf_string line)
                       | _ ->
                           let line_width = estimate_text_width font_size widths line in
                           let aligned_text_x = calculate_aligned_x base_text_x justification line_width available_width in
+                          note_ink aligned_text_x
+                            (text_y +. (descent *. font_size /. 1000.0))
+                            (aligned_text_x +. line_width)
+                            (text_y +. (ascent *. font_size /. 1000.0));
                           Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td (%s) Tj ET" font_size aligned_text_x text_y (escape_pdf_string line)
                     in
                     (current_y +. line_height, text_part :: parts))
@@ -263,7 +295,10 @@ let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders 
     (* Page *)
     (* Label coordinates are always in full-A4 space; for a cropped layout the
        page box simply trims the blank margin around them. *)
-    let box_x0, box_y0, box_x1, box_y1 = page_box_mm ~crop:crop_page layout in
+    let box_x0, box_y0, box_x1, box_y1 =
+      if crop_page && !ink_x0 <= !ink_x1 then concentric_page_box_mm (points_to_mm !ink_x0, points_to_mm !ink_y0, points_to_mm !ink_x1, points_to_mm !ink_y1)
+      else full_page_box_mm
+    in
 
     let page_dict =
       Pdf.Dictionary
