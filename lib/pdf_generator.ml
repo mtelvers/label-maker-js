@@ -260,15 +260,17 @@ let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders 
     let content_num = Pdf.addobj pdf content_stream in
 
     (* Page *)
-    let page_width = mm_to_points a4_width_mm in
-    let page_height = mm_to_points a4_height_mm in
+    (* Label coordinates are always in full-A4 space; for a cropped layout the
+       page box simply trims the blank margin around them. *)
+    let box_x0, box_y0, box_x1, box_y1 = page_box_mm layout in
 
     let page_dict =
       Pdf.Dictionary
         [
           ("/Type", Pdf.Name "/Page");
           ("/Parent", Pdf.Indirect pages_num);
-          ("/MediaBox", Pdf.Array [ Pdf.Real 0.0; Pdf.Real 0.0; Pdf.Real page_width; Pdf.Real page_height ]);
+          ( "/MediaBox",
+            Pdf.Array [ Pdf.Real (mm_to_points box_x0); Pdf.Real (mm_to_points box_y0); Pdf.Real (mm_to_points box_x1); Pdf.Real (mm_to_points box_y1) ] );
           ("/Contents", Pdf.Indirect content_num);
           ("/Resources", Pdf.Dictionary [ ("/Font", Pdf.Dictionary [ ("/F1", Pdf.Indirect font_num) ]) ]);
         ]

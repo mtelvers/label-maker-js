@@ -68,6 +68,23 @@ Both fonts are baked into the js_of_ocaml virtual filesystem by the `--file` fla
 
 - **Avery L7160**: 63.5×38.1mm labels, 3×7 grid
 - **Avery L7162**: 99.1×33.9mm labels, 2×8 grid
+- **Avery L7160-93**: as L7160, but on a 196×267mm page instead of A4
+
+### About L7160-93
+
+Printer drivers set to "fit to printable area" shrink an A4 page so it clears the
+unprintable margin, which moves every label. L7160-93 sidesteps this by cropping the
+blank margin off the page itself: the labels keep their exact A4 positions, but the page
+box is reduced to 196×267mm (93.3% of A4's width — hence the name) so the driver has
+nothing oversized to scale.
+
+The crop is deliberately *concentric* with A4 — the same inset is taken off both sides of
+each axis — so the page centre stays on the A4 centre and a driver that centres the
+smaller sheet puts every label back exactly where it belongs.
+
+Use it only if labels print misaligned with the plain L7160 layout. It removes the
+driver's *reason* to scale but cannot prevent it: a printer whose unprintable margin
+exceeds the crop will still shrink the page, and with less slack than before.
 
 ## Architecture
 

@@ -15,6 +15,9 @@ type label_layout = {
   margin_top_mm : float;
   spacing_x_mm : float;
   spacing_y_mm : float;
+  (* Shrink the page box to just contain the labels, so a printer set to
+     "fit to printable area" has no oversized page to scale down. *)
+  crop_page_to_labels : bool;
 }
 
 (* Avery label specifications *)
@@ -33,6 +36,7 @@ let avery_l7160 =
     (* estimated spacing between labels *)
     spacing_y_mm = 0.0;
     (* estimated spacing between rows *)
+    crop_page_to_labels = false;
   }
 
 let avery_l7162 =
@@ -50,23 +54,39 @@ let avery_l7162 =
     (* estimated spacing between labels *)
     spacing_y_mm = 0.0;
     (* estimated spacing between rows *)
+    crop_page_to_labels = false;
   }
 
-(* L7160-93 appears to be a variant - using similar dimensions to L7160 *)
-let avery_l7160_93 =
-  {
-    name = "Avery L7160-93";
-    label_width_mm = 63.5;
-    label_height_mm = 38.1;
-    cols = 3;
-    rows = 7;
-    margin_left_mm = 7.0;
-    margin_top_mm = 15.0;
-    spacing_x_mm = 2.5;
-    spacing_y_mm = 0.0;
-  }
-
+(* L7160 on a page cropped to the labels. Teachers who cannot change their
+   printer settings get a driver that scales an A4 page into its printable
+   area; sending a page that already fits leaves it nothing to scale. *)
+let avery_l7160_93 = { avery_l7160 with name = "Avery L7160-93"; crop_page_to_labels = true }
 let available_layouts = [ avery_l7160; avery_l7162; avery_l7160_93 ]
+
+(* Page box as (x0, y0, x1, y1) in mm, PDF origin bottom-left.
+
+   For a cropped layout this is the smallest box that still contains every
+   label AND remains concentric with A4: the same inset is taken off both
+   sides of each axis, using whichever side has less clearance. Staying
+   concentric matters because a driver handed a smaller-than-A4 page centres
+   it on the sheet, so keeping the page centre on the A4 centre puts every
+   label back at its true position. Cropping tight to the labels instead
+   would offset the sheet by half the difference between opposite margins.
+
+   Label coordinates are unaffected: they stay in full-A4 space and the box
+   simply crops away the blank margin around them. *)
+let page_box_mm layout =
+  if not layout.crop_page_to_labels then (0.0, 0.0, a4_width_mm, a4_height_mm)
+  else
+    let block_width = (float_of_int layout.cols *. layout.label_width_mm) +. (float_of_int (layout.cols - 1) *. layout.spacing_x_mm) in
+    let block_height = (float_of_int layout.rows *. layout.label_height_mm) +. (float_of_int (layout.rows - 1) *. layout.spacing_y_mm) in
+    let left = layout.margin_left_mm in
+    let right = a4_width_mm -. (layout.margin_left_mm +. block_width) in
+    let top = layout.margin_top_mm in
+    let bottom = a4_height_mm -. (layout.margin_top_mm +. block_height) in
+    let x_inset = Float.max 0.0 (Float.min left right) in
+    let y_inset = Float.max 0.0 (Float.min top bottom) in
+    (x_inset, y_inset, a4_width_mm -. x_inset, a4_height_mm -. y_inset)
 
 (* Calculate label position for given row and column *)
 let calculate_label_position layout row col =
@@ -113,4 +133,9 @@ let print_layout_info layout =
   printf "Label size: %.1f x %.1f mm\n" layout.label_width_mm layout.label_height_mm;
   printf "Grid: %d cols x %d rows = %d labels\n" layout.cols layout.rows (layout.cols * layout.rows);
   printf "Margins: left=%.1f mm, top=%.1f mm\n" layout.margin_left_mm layout.margin_top_mm;
-  printf "Spacing: x=%.1f mm, y=%.1f mm\n" layout.spacing_x_mm layout.spacing_y_mm
+  printf "Spacing: x=%.1f mm, y=%.1f mm\n" layout.spacing_x_mm layout.spacing_y_mm;
+  let x0, y0, x1, y1 = page_box_mm layout in
+  printf "Page box: [%.1f %.1f %.1f %.1f] mm = %.1f x %.1f mm (%.1f%% x %.1f%% of A4)%s\n" x0 y0 x1 y1 (x1 -. x0) (y1 -. y0)
+    (100.0 *. (x1 -. x0) /. a4_width_mm)
+    (100.0 *. (y1 -. y0) /. a4_height_mm)
+    (if layout.crop_page_to_labels then " [cropped]" else "")
