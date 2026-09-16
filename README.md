@@ -11,6 +11,7 @@ Try it online: [https://mtelvers.github.io/label-maker-js/](https://mtelvers.git
 - Support for multiple Avery label formats (L7160, L7162, etc.)
 - PDF generation with precise positioning
 - Choice of a joined cursive font or an easy-read comic font
+- Optional reduced page size so printers do not rescale the sheet
 - Custom text input with font rendering
 - Compiles to JavaScript for web deployment
 
@@ -68,23 +69,34 @@ Both fonts are baked into the js_of_ocaml virtual filesystem by the `--file` fla
 
 - **Avery L7160**: 63.5×38.1mm labels, 3×7 grid
 - **Avery L7162**: 99.1×33.9mm labels, 2×8 grid
-- **Avery L7160-93**: as L7160, but on a 196×267mm page instead of A4
 
-### About L7160-93
+Either layout can be emitted on a reduced page — see **Shrink page to fit printer** below.
+
+## Shrink page to fit printer
 
 Printer drivers set to "fit to printable area" shrink an A4 page so it clears the
-unprintable margin, which moves every label. L7160-93 sidesteps this by cropping the
-blank margin off the page itself: the labels keep their exact A4 positions, but the page
-box is reduced to 196×267mm (93.3% of A4's width — hence the name) so the driver has
-nothing oversized to scale.
+unprintable margin, which moves every label. Ticking **Shrink page to fit printer** crops
+the blank margin off the page itself, so the driver has nothing oversized to scale. The
+labels keep their exact A4 positions; only the page box around them changes:
+
+| Layout | Normal page | Shrunk page |
+| --- | --- | --- |
+| Avery L7160 | 210×297mm (A4) | 196.0×267.0mm (93.3% of A4 width) |
+| Avery L7162 | 210×297mm (A4) | 198.4×275.4mm (94.5% of A4 width) |
 
 The crop is deliberately *concentric* with A4 — the same inset is taken off both sides of
-each axis — so the page centre stays on the A4 centre and a driver that centres the
-smaller sheet puts every label back exactly where it belongs.
+each axis, rather than hugging the labels — so the page centre stays on the A4 centre and
+a driver that centres the smaller sheet puts every label back exactly where it belongs.
+Cropping tight to the labels would instead offset the sheet by half the difference
+between opposite margins.
 
-Use it only if labels print misaligned with the plain L7160 layout. It removes the
-driver's *reason* to scale but cannot prevent it: a printer whose unprintable margin
-exceeds the crop will still shrink the page, and with less slack than before.
+Leave it off unless labels print out of position. It removes the driver's *reason* to
+scale but cannot prevent it: a printer whose unprintable margin exceeds the crop will
+still shrink the page, and with less slack than before. With borders enabled the leftmost
+column and top row graze the page edge, so half of that 1pt stroke is clipped.
+
+This option replaces the old "Avery L7160-93" layout entry, which did the same job for one
+layout only.
 
 ## Architecture
 

@@ -85,7 +85,8 @@ let wrap_text ?(max_width_with_checkbox = 0.0) ?(checkbox_height = 0.0) ?(line_h
 
   all_lines
 
-let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders = false) ?(include_checkbox = true) ?(justification = Left) () =
+let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders = false) ?(include_checkbox = true) ?(justification = Left) ?(crop_page = false)
+    () =
   try
     (* Get the selected layout *)
     let layout =
@@ -262,7 +263,7 @@ let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders 
     (* Page *)
     (* Label coordinates are always in full-A4 space; for a cropped layout the
        page box simply trims the blank margin around them. *)
-    let box_x0, box_y0, box_x1, box_y1 = page_box_mm layout in
+    let box_x0, box_y0, box_x1, box_y1 = page_box_mm ~crop:crop_page layout in
 
     let page_dict =
       Pdf.Dictionary

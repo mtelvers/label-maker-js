@@ -188,11 +188,9 @@ let () =
 
   let option_l7160 = create_select_option "Avery L7160" "Avery L7160 (21 labels, 63.5x38.1mm)" in
   let option_l7162 = create_select_option "Avery L7162" "Avery L7162 (16 labels, 99.1x33.9mm)" in
-  let option_l7160_93 = create_select_option "Avery L7160-93" "Avery L7160-93 (21 labels, 63.5x38.1mm)" in
 
   Dom.appendChild layout_select option_l7160;
   Dom.appendChild layout_select option_l7162;
-  Dom.appendChild layout_select option_l7160_93;
   Dom.appendChild form_div layout_select;
 
   (* Font selection *)
@@ -322,6 +320,28 @@ let () =
   Dom.appendChild checkbox_container checkbox_feature_help;
 
   Dom.appendChild options_container checkbox_container;
+
+  (* Shrink the page to the labels *)
+  let shrink_container = Dom_html.createDiv Dom_html.document in
+  shrink_container##.style##.marginBottom := Js.string "10px";
+
+  let shrink_checkbox = Dom_html.createInput ~_type:(Js.string "checkbox") Dom_html.document in
+  shrink_checkbox##.style##.marginRight := Js.string "8px";
+  Dom.appendChild shrink_container shrink_checkbox;
+
+  let shrink_label = Dom_html.createLabel Dom_html.document in
+  shrink_label##.innerHTML := Js.string "Shrink page to fit printer";
+  shrink_label##.style##.fontSize := Js.string "14px";
+  shrink_label##.style##.color := Js.string "#555";
+  Dom.appendChild shrink_container shrink_label;
+
+  let shrink_help = Dom_html.createSpan Dom_html.document in
+  shrink_help##.innerHTML := Js.string " - try this if labels print out of position";
+  shrink_help##.style##.fontSize := Js.string "12px";
+  shrink_help##.style##.color := Js.string "#888";
+  Dom.appendChild shrink_container shrink_help;
+
+  Dom.appendChild options_container shrink_container;
   Dom.appendChild form_div options_container;
 
   (* Generate button *)
@@ -379,6 +399,7 @@ let () =
            let font_size_text = String.trim (Js.to_string font_size_input##.value) in
            let show_borders = Js.to_bool border_checkbox##.checked in
            let include_checkbox = Js.to_bool checkbox_feature_checkbox##.checked in
+           let crop_page = Js.to_bool shrink_checkbox##.checked in
            let justification = justification_of_string (Js.to_string justification_select##.value) in
            let font = font_of_key (Js.to_string font_select##.value) in
 
@@ -387,15 +408,17 @@ let () =
            | Some font_size when font_size < 6.0 || font_size > 72.0 -> show_error "Font size must be between 6 and 72 pt."
            | Some font_size -> (
                log_message
-                 (Printf.sprintf "Generating %s in %s at %gpt, borders=%b checkbox=%b alignment=%s" layout_name font.file font_size show_borders
-                    include_checkbox
+                 (Printf.sprintf "Generating %s in %s at %gpt, borders=%b checkbox=%b shrink=%b alignment=%s" layout_name font.file font_size show_borders
+                    include_checkbox crop_page
                     (Js.to_string justification_select##.value));
 
                match load_font_from_fs font with
                | None -> show_error "Could not load the label font. Try reloading the page; if it keeps happening the page may not have downloaded fully."
                | Some font_bytes -> (
                    let generated =
-                     try create_pdf_as_string (create_pdf_with_labels font_bytes text layout_name font_size ~show_borders ~include_checkbox ~justification ())
+                     try
+                       create_pdf_as_string
+                         (create_pdf_with_labels font_bytes text layout_name font_size ~show_borders ~include_checkbox ~justification ~crop_page ())
                      with e -> Error (Printexc.to_string e)
                    in
                    match generated with
@@ -405,6 +428,7 @@ let () =
                          "labels_" ^ layout_name ^ "_" ^ font.key
                          ^ (if show_borders then "_bordered" else "")
                          ^ (if include_checkbox then "_checkbox" else "")
+                         ^ (if crop_page then "_fitted" else "")
                          ^ ".pdf"
                        in
                        try

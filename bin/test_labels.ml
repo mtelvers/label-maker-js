@@ -19,7 +19,6 @@ let () =
 
   test_label_layout "Avery L7160";
   test_label_layout "Avery L7162";
-  test_label_layout "Avery L7160-93";
 
   printf "=== Testing Label Generation ===\n%!";
 
