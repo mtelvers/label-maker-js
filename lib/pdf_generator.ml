@@ -6,6 +6,21 @@ type text_justification = Left | Center | Right | Justify
 
 let save_pdf_to_file pdf filename = try Pdfwrite.pdf_to_file pdf filename with e -> failwith ("Failed to save PDF: " ^ Printexc.to_string e)
 
+(* Escape the characters that terminate or continue a PDF literal string, so
+   that text containing brackets or backslashes cannot corrupt the content
+   stream. Widths are still measured on the unescaped text. *)
+let escape_pdf_string s =
+  let buffer = Buffer.create (String.length s + 8) in
+  String.iter
+    (function
+      | ('(' | ')' | '\\') as c ->
+          Buffer.add_char buffer '\\';
+          Buffer.add_char buffer c
+      | '\r' -> Buffer.add_string buffer "\\r"
+      | c -> Buffer.add_char buffer c)
+    s;
+  Buffer.contents buffer
+
 (* Text wrapping functionality *)
 let estimate_text_width font_size widths text =
   let char_width_sum =
@@ -220,11 +235,11 @@ let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders 
                       match justification with
                       | Justify ->
                           let word_spacing = calculate_word_spacing line available_width font_size widths in
-                          Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td %.2f Tw (%s) Tj ET" font_size base_text_x text_y word_spacing line
+                          Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td %.2f Tw (%s) Tj ET" font_size base_text_x text_y word_spacing (escape_pdf_string line)
                       | _ ->
                           let line_width = estimate_text_width font_size widths line in
                           let aligned_text_x = calculate_aligned_x base_text_x justification line_width available_width in
-                          Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td (%s) Tj ET" font_size aligned_text_x text_y line
+                          Printf.sprintf "BT /F1 %.1f Tf %.2f %.2f Td (%s) Tj ET" font_size aligned_text_x text_y (escape_pdf_string line)
                     in
                     (current_y +. line_height, text_part :: parts))
                 (0.0, []) text_lines
@@ -275,5 +290,5 @@ let create_pdf_as_string pdf =
 
     (* Convert PDF bytes to string for download *)
     let pdf_string = Pdfio.string_of_bytes pdf_bytes in
-    pdf_string
-  with e -> "Error: " ^ Printexc.to_string e
+    Ok pdf_string
+  with e -> Error (Printexc.to_string e)

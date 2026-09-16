@@ -2,7 +2,7 @@
 open Js_of_ocaml
 open Label_maker_lib.Pdf_generator
 
-let log_message _msg = ()
+let log_message msg = Firebug.console##log (Js.string msg)
 
 let justification_of_string = function
   | "Left" -> Label_maker_lib.Pdf_generator.Left
@@ -11,74 +11,48 @@ let justification_of_string = function
   | "Justify" -> Label_maker_lib.Pdf_generator.Justify
   | _ -> Label_maker_lib.Pdf_generator.Left (* default fallback *)
 
-let check_font_data_integrity_js font_bytes expected_size =
+(* The fonts baked into the js_of_ocaml virtual filesystem by bin/dune.
+   [expected_size] is a tripwire for a bundle truncated in transit. *)
+type label_font = { key : string; menu_label : string; file : string; expected_size : int }
+
+let cursive_font = { key = "cursive"; menu_label = "Cursive (XCCW Joined)"; file = "XCCW_Joined_23a.ttf"; expected_size = 63200 }
+
+(* Comic Relief stands in for Comic Sans, which cannot be redistributed. *)
+let comic_font = { key = "comic"; menu_label = "Comic Sans style (Comic Relief)"; file = "ComicRelief-Regular.ttf"; expected_size = 80324 }
+
+(* Cursive stays first so it remains the default selection. *)
+let available_fonts = [ cursive_font; comic_font ]
+let font_of_key key = match List.find_opt (fun f -> f.key = key) available_fonts with Some f -> f | None -> cursive_font
+
+(* Returns a description of the problem, or None if the font looks intact.
+   Only called for its diagnostics, so it must never raise. *)
+let font_data_problem font font_bytes =
   let actual_size = Bytes.length font_bytes in
-  let first_4_bytes =
-    if actual_size >= 4 then
-      Printf.sprintf "%02X %02X %02X %02X"
-        (int_of_char (Bytes.get font_bytes 0))
-        (int_of_char (Bytes.get font_bytes 1))
-        (int_of_char (Bytes.get font_bytes 2))
-        (int_of_char (Bytes.get font_bytes 3))
-    else "INSUFFICIENT_DATA"
+  let has_font_magic =
+    actual_size >= 4
+    &&
+    let magic = Printf.sprintf "%c%c%c%c" (Bytes.get font_bytes 0) (Bytes.get font_bytes 1) (Bytes.get font_bytes 2) (Bytes.get font_bytes 3) in
+    magic = "\x00\x01\x00\x00" || magic = "OTTO" || magic = "true" || magic = "ttcf"
   in
-  let last_4_bytes =
-    if actual_size >= 4 then
-      Printf.sprintf "%02X %02X %02X %02X"
-        (int_of_char (Bytes.get font_bytes (actual_size - 4)))
-        (int_of_char (Bytes.get font_bytes (actual_size - 3)))
-        (int_of_char (Bytes.get font_bytes (actual_size - 2)))
-        (int_of_char (Bytes.get font_bytes (actual_size - 1)))
-    else "INSUFFICIENT_DATA"
-  in
+  if not has_font_magic then Some (font.file ^ " does not start with a TrueType/OpenType signature")
+  else if actual_size <> font.expected_size then Some (Printf.sprintf "%s is %d bytes, expected %d" font.file actual_size font.expected_size)
+  else None
 
-  log_message ("FONT_DEBUG: Expected size: " ^ string_of_int expected_size ^ ", Actual size: " ^ string_of_int actual_size);
-  log_message ("FONT_DEBUG: First 4 bytes: " ^ first_4_bytes);
-  log_message ("FONT_DEBUG: Last 4 bytes: " ^ last_4_bytes);
-
-  (* Check for TTF/OTF magic numbers *)
-  let is_valid_font =
-    if actual_size >= 4 then
-      let magic = Printf.sprintf "%c%c%c%c" (Bytes.get font_bytes 0) (Bytes.get font_bytes 1) (Bytes.get font_bytes 2) (Bytes.get font_bytes 3) in
-      magic = "\x00\x01\x00\x00" || magic = "OTTO" || magic = "true" || magic = "ttcf"
-    else false
-  in
-
-  log_message ("FONT_DEBUG: Valid font magic number: " ^ string_of_bool is_valid_font);
-
-  (* Calculate simple checksum *)
-  let checksum = ref 0 in
-  for i = 0 to min 99 (actual_size - 1) do
-    (* First 100 bytes checksum *)
-    checksum := !checksum + int_of_char (Bytes.get font_bytes i)
-  done;
-  log_message ("FONT_DEBUG: First 100 bytes checksum: " ^ string_of_int !checksum);
-
-  (actual_size = expected_size, is_valid_font, !checksum)
-
-let load_font_from_fs filename =
+let load_font_from_fs font =
   try
-    log_message ("Loading font from js_of_ocaml virtual filesystem: " ^ filename);
-    let ic = open_in_bin filename in
+    let ic = open_in_bin font.file in
     let length = in_channel_length ic in
     let bytes = Bytes.create length in
     really_input ic bytes 0 length;
     close_in ic;
-    log_message ("Font loaded successfully from VFS: " ^ string_of_int length ^ " bytes");
-
-    (* Check font data integrity *)
-    let size_ok, valid_magic, checksum = check_font_data_integrity_js bytes 63200 in
-    log_message
-      ("Font integrity check: size_ok=" ^ string_of_bool size_ok ^ ", valid_magic=" ^ string_of_bool valid_magic ^ ", checksum=" ^ string_of_int checksum);
-
+    (match font_data_problem font bytes with Some problem -> log_message ("WARNING: " ^ problem) | None -> ());
     Some bytes
   with e ->
-    log_message ("Font loading error: " ^ Printexc.to_string e);
+    log_message ("Font loading error for " ^ font.file ^ ": " ^ Printexc.to_string e);
     None
 
 let download_pdf_binary_safe pdf_content filename =
-  log_message ("Creating binary-safe PDF download for " ^ filename);
-  log_message ("PDF content length: " ^ string_of_int (String.length pdf_content) ^ " bytes");
+  log_message (Printf.sprintf "Opening %s (%d bytes)" filename (String.length pdf_content));
 
   (* Convert string to Uint8Array for proper binary handling *)
   let length = String.length pdf_content in
@@ -87,8 +61,6 @@ let download_pdf_binary_safe pdf_content filename =
   for i = 0 to length - 1 do
     Typed_array.set uint8_array i (int_of_char (String.get pdf_content i))
   done;
-
-  log_message "Converted to Uint8Array successfully";
 
   (* Create blob from Uint8Array *)
   let blob_constructor = Js.Unsafe.js_expr "Blob" in
@@ -99,7 +71,6 @@ let download_pdf_binary_safe pdf_content filename =
     end
   in
   let blob = Js.Unsafe.new_obj blob_constructor [| Js.Unsafe.inject blob_data; Js.Unsafe.inject blob_options |] in
-
   let url = Js.Unsafe.fun_call (Js.Unsafe.js_expr "URL.createObjectURL") [| Js.Unsafe.inject blob |] in
 
   let a = Dom_html.createA Dom_html.document in
@@ -111,9 +82,7 @@ let download_pdf_binary_safe pdf_content filename =
   Dom.appendChild body a;
   a##click;
   Dom.removeChild body a;
-  ignore (Js.Unsafe.fun_call (Js.Unsafe.js_expr "URL.revokeObjectURL") [| url |]);
-
-  log_message "Binary-safe PDF download completed"
+  ignore (Js.Unsafe.fun_call (Js.Unsafe.js_expr "URL.revokeObjectURL") [| url |])
 
 let download_pdf pdf_content filename =
   try download_pdf_binary_safe pdf_content filename
@@ -225,6 +194,26 @@ let () =
   Dom.appendChild layout_select option_l7162;
   Dom.appendChild layout_select option_l7160_93;
   Dom.appendChild form_div layout_select;
+
+  (* Font selection *)
+  let font_label = Dom_html.createLabel Dom_html.document in
+  font_label##.innerHTML := Js.string "Font:";
+  font_label##.style##.display := Js.string "block";
+  font_label##.style##.marginBottom := Js.string "8px";
+  font_label##.style##.fontWeight := Js.string "bold";
+  font_label##.style##.color := Js.string "#555";
+  Dom.appendChild form_div font_label;
+
+  let font_select = Dom_html.createSelect Dom_html.document in
+  font_select##.style##.width := Js.string "100%";
+  font_select##.style##.padding := Js.string "10px";
+  font_select##.style##.marginBottom := Js.string "20px";
+  font_select##.style##.border := Js.string "1px solid #ddd";
+  font_select##.style##.borderRadius := Js.string "4px";
+  font_select##.style##.fontSize := Js.string "14px";
+
+  List.iter (fun f -> Dom.appendChild font_select (create_select_option f.key f.menu_label)) available_fonts;
+  Dom.appendChild form_div font_select;
 
   (* Font size input *)
   let font_size_label = Dom_html.createLabel Dom_html.document in
@@ -353,38 +342,76 @@ let () =
 
   Dom.appendChild button_container generate_button;
 
+  (* Status area: failures used to be swallowed silently, leaving the button
+     looking like it had done nothing. *)
+  let status_div = Dom_html.createDiv Dom_html.document in
+  status_div##.style##.marginTop := Js.string "20px";
+  status_div##.style##.padding := Js.string "12px";
+  status_div##.style##.borderRadius := Js.string "4px";
+  status_div##.style##.fontSize := Js.string "14px";
+  status_div##.style##.textAlign := Js.string "left";
+  status_div##.style##.display := Js.string "none";
+  Dom.appendChild button_container status_div;
+
+  let clear_status () = status_div##.style##.display := Js.string "none" in
+  let set_status ~background ~border ~color msg =
+    status_div##.textContent := Js.some (Js.string msg);
+    status_div##.style##.backgroundColor := Js.string background;
+    status_div##.style##.border := Js.string ("1px solid " ^ border);
+    status_div##.style##.color := Js.string color;
+    status_div##.style##.display := Js.string "block"
+  in
+  let show_error msg =
+    log_message ("ERROR: " ^ msg);
+    set_status ~background:"#fdecea" ~border:"#f5c2c0" ~color:"#611a15" msg
+  in
+  let show_info msg =
+    log_message msg;
+    set_status ~background:"#edf7ed" ~border:"#c5e1c5" ~color:"#1e4620" msg
+  in
+
   generate_button##.onclick :=
     Dom_html.handler (fun _ ->
         (try
+           clear_status ();
            let text = Js.to_string text_input##.value in
            let layout_name = Js.to_string layout_select##.value in
-           let font_size = float_of_string (Js.to_string font_size_input##.value) in
+           let font_size_text = String.trim (Js.to_string font_size_input##.value) in
            let show_borders = Js.to_bool border_checkbox##.checked in
            let include_checkbox = Js.to_bool checkbox_feature_checkbox##.checked in
            let justification = justification_of_string (Js.to_string justification_select##.value) in
+           let font = font_of_key (Js.to_string font_select##.value) in
 
-           log_message
-             ("Generating labels with text: '" ^ text ^ "', layout: " ^ layout_name ^ ", font size: " ^ string_of_float font_size ^ ", borders: "
-            ^ string_of_bool show_borders ^ ", checkbox: " ^ string_of_bool include_checkbox ^ ", justification: "
-             ^ Js.to_string justification_select##.value);
+           match float_of_string_opt font_size_text with
+           | None -> show_error ("\"" ^ font_size_text ^ "\" is not a valid font size. Enter a number between 6 and 72.")
+           | Some font_size when font_size < 6.0 || font_size > 72.0 -> show_error "Font size must be between 6 and 72 pt."
+           | Some font_size -> (
+               log_message
+                 (Printf.sprintf "Generating %s in %s at %gpt, borders=%b checkbox=%b alignment=%s" layout_name font.file font_size show_borders
+                    include_checkbox
+                    (Js.to_string justification_select##.value));
 
-           match load_font_from_fs "XCCW_Joined_23a.ttf" with
-           | Some font_bytes -> (
-               log_message ("Font loaded successfully! Size: " ^ string_of_int (Bytes.length font_bytes) ^ " bytes");
-               try
-                 log_message "Creating multi-label PDF...";
-                 let pdf = create_pdf_with_labels font_bytes text layout_name font_size ~show_borders ~include_checkbox ~justification () in
-                 let pdf_content = create_pdf_as_string pdf in
-                 if String.length pdf_content > 6 && String.sub pdf_content 0 6 = "Error:" then log_message pdf_content
-                 else
-                   let filename =
-                     "labels_" ^ layout_name ^ (if show_borders then "_bordered" else "") ^ (if include_checkbox then "_checkbox" else "") ^ ".pdf"
+               match load_font_from_fs font with
+               | None -> show_error "Could not load the label font. Try reloading the page; if it keeps happening the page may not have downloaded fully."
+               | Some font_bytes -> (
+                   let generated =
+                     try create_pdf_as_string (create_pdf_with_labels font_bytes text layout_name font_size ~show_borders ~include_checkbox ~justification ())
+                     with e -> Error (Printexc.to_string e)
                    in
-                   let () = download_pdf pdf_content filename in
-                   log_message ("Label PDF generated and opened in browser: " ^ filename)
-               with e -> log_message ("Error creating PDF: " ^ Printexc.to_string e))
-           | None -> log_message "Failed to load custom font. Make sure XCCW_Joined_23a.ttf is uploaded to the virtual file system."
-         with e -> log_message ("Error: " ^ Printexc.to_string e));
+                   match generated with
+                   | Error msg -> show_error ("Could not generate the PDF: " ^ msg)
+                   | Ok pdf_content -> (
+                       let filename =
+                         "labels_" ^ layout_name ^ "_" ^ font.key
+                         ^ (if show_borders then "_bordered" else "")
+                         ^ (if include_checkbox then "_checkbox" else "")
+                         ^ ".pdf"
+                       in
+                       try
+                         download_pdf pdf_content filename;
+                         show_info "Label sheet generated. If it did not open, check whether your browser blocked the pop-up."
+                       with e -> show_error ("The PDF was generated but could not be opened: " ^ Printexc.to_string e))))
+         with e -> show_error ("Something went wrong: " ^ Printexc.to_string e));
         Js._true);
 
   Dom.appendChild form_div button_container;

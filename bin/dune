@@ -7,7 +7,10 @@
   (pps js_of_ocaml-ppx))
  (js_of_ocaml
   (build_runtime_flags
-   (--file %{dep:../XCCW_Joined_23a.ttf}))))
+   (--file
+    %{dep:../XCCW_Joined_23a.ttf}
+    --file
+    %{dep:../ComicRelief-Regular.ttf}))))
 
 (executable
  (public_name test-labels)
