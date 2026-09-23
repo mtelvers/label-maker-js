@@ -187,8 +187,12 @@ let create_pdf_with_labels font_bytes text layout_name font_size ?(show_borders 
     (* Calculate text wrapping parameters *)
     let label_width_points = mm_to_points layout.label_width_mm in
     let label_height_points = mm_to_points layout.label_height_mm in
-    let text_margin = 3.0 in
-    (* 3 points margin inside label *)
+    (* Margin inside each label. 5pt rather than a tighter 3pt for two reasons:
+       it keeps the ink 8.76mm from the paper edge, inside the unprintable
+       margin of the printers in use (measured at ~8.4mm on one), so the
+       cropped page needs no scaling; and it leaves the outer columns a
+       visible left margin even after a printer's own registration offset. *)
+    let text_margin = 5.0 in
     let checkbox_height = font_size in
     (* checkbox matches font size *)
     let checkbox_margin = 5.0 in
