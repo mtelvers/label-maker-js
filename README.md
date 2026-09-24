@@ -88,8 +88,8 @@ Typical page sizes at 12pt with a checkbox:
 
 | Layout | Normal page | Shrunk, borders off | Shrunk, borders on |
 | --- | --- | --- | --- |
-| Avery L7160 | 210×297mm (A4) | 192.5×267.0mm | 196.4×267.4mm |
-| Avery L7162 | 210×297mm (A4) | 194.5×267.0mm | 198.8×275.8mm |
+| Avery L7160 | 210×297mm (A4) | 191.8×267.0mm | 196.4×267.4mm |
+| Avery L7162 | 210×297mm (A4) | 195.2×267.0mm | 198.8×275.8mm |
 
 The crop is deliberately *concentric* with A4 — the same inset is taken off both sides of
 each axis, rather than hugging the ink — so the page centre stays on the A4 centre and a
@@ -98,10 +98,11 @@ Cropping tight to the ink would instead offset the sheet by half the difference 
 opposite margins. The crop is also capped at 15mm per edge, so centred or right-aligned
 short text cannot produce a page a fraction of A4 that a driver might scale *up*.
 
-Text sits 5pt inside each label rather than a tighter 3pt. That keeps the ink 8.76mm
-from the paper edge — inside the unprintable margin of the printers in use, measured at
-~8.4mm on one — so the cropped page needs no scaling at all, and it leaves the outer
-columns a visible margin even after a printer's own registration offset.
+Text sits 8pt (2.8mm) inside each label rather than a tight 3pt. That keeps the ink
+9.8mm from the paper edge — well clear of the unprintable margin of the printers in use,
+measured at ~8.4mm on one — so the cropped page needs no scaling and there is room for a
+printer's own registration offset on top. It also gives the outer columns a visible
+margin rather than text that looks pushed up against the die cut.
 
 Leave it off unless labels print out of position. It removes the driver's *reason* to
 scale but cannot prevent it: a printer whose unprintable margin exceeds the crop will
